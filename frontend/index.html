@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>RIOBSIATM — Панель статуса пациентов</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap');
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #dde3ea; font-family: 'Nunito', sans-serif; }
+  .clay-raised { box-shadow: 10px 10px 22px rgba(163,177,198,0.55), -10px -10px 22px rgba(255,255,255,0.75); }
+  .clay-raised-sm { box-shadow: 6px 6px 12px rgba(163,177,198,0.5), -6px -6px 12px rgba(255,255,255,0.7); }
+  .row { display:grid; grid-template-columns:2.7fr 3.2fr; align-items:center; padding:20px 32px; background:#eef1f6; border-top:2px solid rgba(163,177,198,0.25); gap:16px; }
+  .row .name { font-size:30px; font-weight:800; color:#333640; line-height:1.15; }
+  .row .loc { font-size:31px; font-weight:600; color:#4a4e58; }
+  .row .loc.transit { font-style: italic; }
+  #status-pill { position:fixed; bottom:20px; right:20px; font:13px/1.4 'Nunito', sans-serif; color:#666; background:#fff; padding:8px 14px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.12); }
+  #status-pill.err { color:#b3261e; }
+  #rows-viewport { overflow: hidden; }
+  #rows-viewport::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body>
+
+<div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:60px 20px;">
+  <div class="clay-raised" style="width:1440px; flex-shrink:0; background:#e4e8ee; border-radius:44px; padding:22px;">
+    <div style="background:#eef1f6; border-radius:32px; padding:36px 40px 32px 40px; box-shadow: inset 0 2px 10px rgba(163,177,198,0.35); overflow:hidden;">
+
+      <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:28px;">
+        <div style="display:flex; align-items:center; gap:18px;">
+          <div class="clay-raised-sm" style="width:58px; height:58px; border-radius:20px; background:linear-gradient(145deg, #ef7266, #d8483a); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M8 2v4M16 2v4M3 10h18"></path><circle cx="9" cy="15" r="1.5" fill="white" stroke="none"></circle><path d="M13 14h5M13 17h5"></path></svg>
+          </div>
+          <div>
+            <div style="font-size:46px; font-weight:900; color:#d8483a; letter-spacing:0.5px;">RIOBSIATM</div>
+            <div style="font-size:21px; font-weight:700; color:#8b91a0; letter-spacing:1.5px; margin-top:2px;">ПАНЕЛЬ СТАТУСА ПАЦИЕНТОВ</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:24px;">
+          <div style="width:2px; height:44px; background:rgba(163,177,198,0.4); border-radius:2px;"></div>
+          <div style="text-align:right;">
+            <div id="clock-time" style="font-size:52px; font-weight:900; color:#333640; letter-spacing:1px;">--:--:--</div>
+            <div id="clock-date" style="font-size:21px; font-weight:600; color:#8b91a0; margin-top:2px;">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="clay-raised-sm" style="background:#eef1f6; border-radius:28px; overflow:hidden; margin-bottom:0;">
+        <div style="display:grid; grid-template-columns:2.7fr 3.2fr; gap:16px; padding:22px 32px; background:#e6eaf0;">
+          <div style="font-size:31px; font-weight:800; letter-spacing:1px; color:#4a4e58;">ИМЯ</div>
+          <div style="font-size:31px; font-weight:800; letter-spacing:1px; color:#4a4e58;">РАСПОЛОЖЕНИЕ</div>
+        </div>
+        <div id="rows-viewport">
+          <div id="rows"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="status-pill">Подключение…</div>
+
+<script>
+  // Point this at your backend (see backend/README). Same-origin by default;
+  // override by opening this file as index.html?api=https://your-host or editing below.
+  const params = new URLSearchParams(location.search);
+  const API_BASE = params.get('api') || 'http://localhost:8000';
+  const POLL_MS = 5000;
+
+  const rowsEl = document.getElementById('rows');
+  const viewportEl = document.getElementById('rows-viewport');
+  const statusEl = document.getElementById('status-pill');
+  const clockTimeEl = document.getElementById('clock-time');
+  const clockDateEl = document.getElementById('clock-date');
+
+  // ── Auto-scroll for long patient lists ──────────────────────────────────
+  // Shows VISIBLE_ROWS rows at a time (matches the original design's height),
+  // then slowly scrolls through the rest: pause at top → scroll down →
+  // pause at bottom → jump to top → repeat. No mouse/touch on a TV board,
+  // so this is the only way to see rows 7+ of a 30-50 patient list.
+  const VISIBLE_ROWS = 6;
+  const SCROLL_SPEED_PX = 0.6;   // px per animation frame (~60fps) — slow, readable
+  const PAUSE_MS = 3000;         // dwell time at top and bottom
+
+  let scrollState = 'top-pause';
+  let stateUntil = Date.now() + PAUSE_MS;
+
+  function sizeViewport() {
+    const rows = Array.from(rowsEl.querySelectorAll('.row'));
+    if (rows.length === 0) { viewportEl.style.maxHeight = ''; return; }
+    // Rows have variable height (names can wrap to 2-3 lines), so measure
+    // actual rendered geometry up through the Nth row rather than assuming
+    // a uniform row height — otherwise a tall row gets cut off mid-text.
+    const count = Math.min(VISIBLE_ROWS, rows.length);
+    const viewportTop = viewportEl.getBoundingClientRect().top;
+    const lastRowBottom = rows[count - 1].getBoundingClientRect().bottom;
+    viewportEl.style.maxHeight = Math.round(lastRowBottom - viewportTop) + 'px';
+  }
+
+  function autoScrollTick() {
+    requestAnimationFrame(autoScrollTick);
+    const maxScroll = viewportEl.scrollHeight - viewportEl.clientHeight;
+    if (maxScroll <= 2) return; // everything fits — nothing to scroll
+
+    const now = Date.now();
+    if (scrollState === 'top-pause') {
+      if (now >= stateUntil) scrollState = 'scrolling-down';
+      return;
+    }
+    if (scrollState === 'bottom-pause') {
+      if (now >= stateUntil) scrollState = 'scrolling-up';
+      return;
+    }
+    if (scrollState === 'scrolling-down') {
+      viewportEl.scrollTop += SCROLL_SPEED_PX;
+      if (viewportEl.scrollTop >= maxScroll - 0.5) {
+        viewportEl.scrollTop = maxScroll;
+        scrollState = 'bottom-pause';
+        stateUntil = now + PAUSE_MS;
+      }
+      return;
+    }
+    if (scrollState === 'scrolling-up') {
+      viewportEl.scrollTop -= SCROLL_SPEED_PX;
+      if (viewportEl.scrollTop <= 0.5) {
+        viewportEl.scrollTop = 0;
+        scrollState = 'top-pause';
+        stateUntil = now + PAUSE_MS;
+      }
+    }
+  }
+  requestAnimationFrame(autoScrollTick);
+
+  const WEEKDAYS = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+  const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+
+  // Local clock, ticked every second; resynced to the server periodically.
+  let clockOffsetMs = 0; // serverNow - clientNow
+
+  function renderClock() {
+    const now = new Date(Date.now() + clockOffsetMs);
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    clockTimeEl.textContent = `${hh}:${mm}:${ss}`;
+    clockDateEl.textContent = `${WEEKDAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()} г.`;
+  }
+  setInterval(renderClock, 1000);
+  renderClock();
+
+  async function syncServerTime() {
+    try {
+      const res = await fetch(`${API_BASE}/api/server-time`);
+      if (!res.ok) return;
+      const data = await res.json();
+      clockOffsetMs = new Date(data.iso).getTime() - Date.now();
+    } catch (e) { /* keep local clock if this fails */ }
+  }
+
+
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function renderPatients(patients) {
+    rowsEl.innerHTML = patients.map(p => `
+      <div class="row">
+        <div class="name">${escapeHtml(p.name)}</div>
+        <div class="loc${p.is_transit ? ' transit' : ''}">${escapeHtml(p.location)}</div>
+      </div>
+    `).join('');
+    // Reset scroll position and re-measure row height whenever the list changes
+    // (patient count, or even just longer text, can change the row/total height).
+    viewportEl.scrollTop = 0;
+    scrollState = 'top-pause';
+    stateUntil = Date.now() + PAUSE_MS;
+    sizeViewport();
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(`${API_BASE}/api/patients`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const patients = await res.json();
+      renderPatients(patients);
+      statusEl.textContent = 'Обновлено ' + new Date().toLocaleTimeString('ru-RU');
+      statusEl.classList.remove('err');
+    } catch (e) {
+      statusEl.textContent = 'Нет связи с сервером — повтор через ' + (POLL_MS / 1000) + ' с';
+      statusEl.classList.add('err');
+    }
+  }
+
+  async function refreshImportStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/import/status`);
+      if (!res.ok) return;
+      const logs = await res.json();
+      const lastOk = logs.find(l => l.status === 'ok');
+      if (lastOk) {
+        const when = new Date(lastOk.imported_at).toLocaleString('ru-RU');
+        statusEl.title = `Последний импорт из CSV: ${lastOk.filename} (${lastOk.row_count} записей) — ${when}`;
+      }
+    } catch (e) { /* not critical, ignore */ }
+  }
+
+  syncServerTime();
+  refresh();
+  refreshImportStatus();
+  setInterval(refresh, POLL_MS);
+  setInterval(syncServerTime, 5 * 60 * 1000);
+  setInterval(refreshImportStatus, 60 * 1000);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>RIOBSIATM — Админ-панель</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap');
+  * { box-sizing: border-box; }
+  body { margin:0; background:#dde3ea; font-family:'Nunito', sans-serif; padding:40px 20px; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size:28px; color:#333640; margin-bottom:4px; }
+  .sub { color:#8b91a0; font-size:15px; margin-bottom:24px; }
+  .card { background:#eef1f6; border-radius:20px; padding:24px; margin-bottom:24px; box-shadow: 6px 6px 12px rgba(163,177,198,0.5), -6px -6px 12px rgba(255,255,255,0.7); }
+  .card h2 { font-size:18px; color:#4a4e58; margin:0 0 14px; }
+  table { width:100%; border-collapse: collapse; }
+  th, td { text-align:left; padding:10px 8px; font-size:14px; border-bottom:1px solid rgba(163,177,198,0.3); }
+  th { color:#8b91a0; font-weight:700; text-transform:uppercase; font-size:12px; letter-spacing:0.5px; }
+  input[type=text] { width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(163,177,198,0.5); font-family:inherit; font-size:14px; background:#fff; }
+  input[type=checkbox] { transform: scale(1.3); }
+  button { border:none; border-radius:10px; padding:9px 16px; font-family:inherit; font-weight:700; font-size:13px; cursor:pointer; }
+  .btn-primary { background:#d8483a; color:#fff; }
+  .btn-secondary { background:#e6eaf0; color:#4a4e58; }
+  .btn-danger { background:#fff; color:#d8483a; border:1px solid #d8483a; }
+  .row-actions { display:flex; gap:6px; }
+  .status-ok { color:#2e7d32; }
+  .status-error { color:#c62828; }
+  .key-input { padding:8px 10px; border-radius:8px; border:1px solid rgba(163,177,198,0.5); font-family:inherit; width:260px; }
+  .msg { font-size:13px; margin-top:8px; }
+  .msg.err { color:#c62828; }
+  .msg.ok { color:#2e7d32; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RIOBSIATM — Админ-панель</h1>
+  <div class="sub">Ручное редактирование табло и статус автоимпорта CSV</div>
+
+  <div class="card">
+    <h2>Подключение</h2>
+    <label>API-адрес: <input class="key-input" id="apiBase" value="http://localhost:8000"></label><br><br>
+    <label>X-API-Key (если задан на сервере): <input class="key-input" id="apiKey" type="password" placeholder="оставьте пустым, если не задан"></label>
+  </div>
+
+  <div class="card">
+    <h2>Пациенты на табло</h2>
+    <table>
+      <thead><tr><th>Имя</th><th>Расположение</th><th>В пути (курсив)</th><th></th></tr></thead>
+      <tbody id="patientRows"></tbody>
+    </table>
+    <br>
+    <button class="btn-secondary" onclick="addRow()">+ Добавить строку</button>
+    <div id="saveMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Автоимпорт из CSV-папки</h2>
+    <p style="font-size:14px; color:#4a4e58;">Бэкенд следит за папкой <code>import_dropbox/</code> на сервере. Как только туда попадает файл вида <code>name,location,is_transit</code> — табло обновляется автоматически.</p>
+    <button class="btn-secondary" onclick="scanNow()">Проверить папку сейчас</button>
+    <div id="scanMsg" class="msg"></div>
+    <br><br>
+    <table>
+      <thead><tr><th>Файл</th><th>Статус</th><th>Строк</th><th>Когда</th><th>Детали</th></tr></thead>
+      <tbody id="importRows"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const apiBaseEl = document.getElementById('apiBase');
+  const apiKeyEl = document.getElementById('apiKey');
+  const patientRowsEl = document.getElementById('patientRows');
+  const importRowsEl = document.getElementById('importRows');
+  const saveMsgEl = document.getElementById('saveMsg');
+  const scanMsgEl = document.getElementById('scanMsg');
+
+  function api() { return apiBaseEl.value.replace(/\/$/, ''); }
+  function headers(json) {
+    const h = {};
+    if (json) h['Content-Type'] = 'application/json';
+    if (apiKeyEl.value) h['X-API-Key'] = apiKeyEl.value;
+    return h;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  let patients = [];
+
+  async function loadPatients() {
+    const res = await fetch(`${api()}/api/patients`);
+    patients = await res.json();
+    renderPatients();
+  }
+
+  function renderPatients() {
+    patientRowsEl.innerHTML = patients.map((p, i) => `
+      <tr data-id="${p.id ?? ''}" data-idx="${i}">
+        <td><input type="text" value="${escapeHtml(p.name)}" data-field="name"></td>
+        <td><input type="text" value="${escapeHtml(p.location)}" data-field="location"></td>
+        <td><input type="checkbox" ${p.is_transit ? 'checked' : ''} data-field="is_transit"></td>
+        <td class="row-actions">
+          <button class="btn-primary" onclick="saveRow(${i})">Сохранить</button>
+          <button class="btn-danger" onclick="deleteRow(${i})">Удалить</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function addRow() {
+    patients.push({ name: '', location: '', is_transit: false, position: patients.length });
+    renderPatients();
+  }
+
+  function readRow(i) {
+    const tr = patientRowsEl.querySelector(`tr[data-idx="${i}"]`);
+    return {
+      name: tr.querySelector('[data-field="name"]').value.trim(),
+      location: tr.querySelector('[data-field="location"]').value.trim(),
+      is_transit: tr.querySelector('[data-field="is_transit"]').checked,
+      position: i,
+    };
+  }
+
+  async function saveRow(i) {
+    const data = readRow(i);
+    if (!data.name || !data.location) { showMsg(saveMsgEl, 'Имя и расположение обязательны', true); return; }
+    const p = patients[i];
+    try {
+      let res;
+      if (p.id) {
+        res = await fetch(`${api()}/api/patients/${p.id}`, { method: 'PUT', headers: headers(true), body: JSON.stringify(data) });
+      } else {
+        res = await fetch(`${api()}/api/patients`, { method: 'POST', headers: headers(true), body: JSON.stringify(data) });
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showMsg(saveMsgEl, 'Сохранено', false);
+      await loadPatients();
+    } catch (e) {
+      showMsg(saveMsgEl, 'Ошибка сохранения: ' + e.message, true);
+    }
+  }
+
+  async function deleteRow(i) {
+    const p = patients[i];
+    if (!p.id) { patients.splice(i, 1); renderPatients(); return; }
+    if (!confirm(`Удалить «${p.name}» с табло?`)) return;
+    try {
+      const res = await fetch(`${api()}/api/patients/${p.id}`, { method: 'DELETE', headers: headers(false) });
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+      await loadPatients();
+    } catch (e) {
+      showMsg(saveMsgEl, 'Ошибка удаления: ' + e.message, true);
+    }
+  }
+
+  function showMsg(el, text, isErr) {
+    el.textContent = text;
+    el.className = 'msg ' + (isErr ? 'err' : 'ok');
+    setTimeout(() => { el.textContent = ''; }, 4000);
+  }
+
+  async function loadImportStatus() {
+    const res = await fetch(`${api()}/api/import/status`);
+    const logs = await res.json();
+    importRowsEl.innerHTML = logs.map(l => `
+      <tr>
+        <td>${escapeHtml(l.filename)}</td>
+        <td class="status-${l.status === 'ok' ? 'ok' : 'error'}">${l.status === 'ok' ? 'Успех' : 'Ошибка'}</td>
+        <td>${l.row_count}</td>
+        <td>${new Date(l.imported_at).toLocaleString('ru-RU')}</td>
+        <td>${escapeHtml(l.detail || '—')}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function scanNow() {
+    try {
+      const res = await fetch(`${api()}/api/import/scan`, { method: 'POST', headers: headers(false) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showMsg(scanMsgEl, 'Папка проверена', false);
+      await loadPatients();
+      await loadImportStatus();
+    } catch (e) {
+      showMsg(scanMsgEl, 'Ошибка: ' + e.message, true);
+    }
+  }
+
+  loadPatients();
+  loadImportStatus();
+  setInterval(loadImportStatus, 15000);
+</script>
+</body>
+</html>
