@@ -79,11 +79,17 @@
   // pause at bottom → jump to top → repeat. No mouse/touch on a TV board,
   // so this is the only way to see rows 7+ of a 30-50 patient list.
   const VISIBLE_ROWS = 6;
-  const SCROLL_SPEED_PX = 0.6;   // px per animation frame (~60fps) — slow, readable
-  const PAUSE_MS = 3000;         // dwell time at top and bottom
+  const SCROLL_SPEED_PX_PER_SEC = 40; // readable scroll speed, independent of frame rate
+  const PAUSE_MS = 3000;              // dwell time at top and bottom
 
   let scrollState = 'top-pause';
   let stateUntil = Date.now() + PAUSE_MS;
+  // Browsers round scrollTop to whole pixels on every read/write, so
+  // accumulating a sub-pixel-per-frame amount directly on scrollTop loses
+  // the fractional part each time and the scroll never visibly moves.
+  // Track the real (float) position ourselves and only round on write.
+  let scrollPos = 0;
+  let lastFrameTs = null;
 
   function sizeViewport() {
     const rows = Array.from(rowsEl.querySelectorAll('.row'));
@@ -97,23 +103,29 @@
     viewportEl.style.maxHeight = Math.round(lastRowBottom - viewportTop) + 'px';
   }
 
-  function autoScrollTick() {
+  function autoScrollTick(ts) {
     requestAnimationFrame(autoScrollTick);
+    if (lastFrameTs === null) lastFrameTs = ts;
+    const dtSec = Math.min(0.25, (ts - lastFrameTs) / 1000); // clamp in case of tab-switch pauses
+    lastFrameTs = ts;
+
     const maxScroll = viewportEl.scrollHeight - viewportEl.clientHeight;
     if (maxScroll <= 2) return; // everything fits — nothing to scroll
 
     const now = Date.now();
     if (scrollState === 'top-pause') {
-      if (now >= stateUntil) scrollState = 'scrolling-down';
+      if (now >= stateUntil) { scrollPos = viewportEl.scrollTop; scrollState = 'scrolling-down'; }
       return;
     }
     if (scrollState === 'bottom-pause') {
-      if (now >= stateUntil) scrollState = 'scrolling-up';
+      if (now >= stateUntil) { scrollPos = viewportEl.scrollTop; scrollState = 'scrolling-up'; }
       return;
     }
     if (scrollState === 'scrolling-down') {
-      viewportEl.scrollTop += SCROLL_SPEED_PX;
-      if (viewportEl.scrollTop >= maxScroll - 0.5) {
+      scrollPos = Math.min(maxScroll, scrollPos + SCROLL_SPEED_PX_PER_SEC * dtSec);
+      viewportEl.scrollTop = Math.round(scrollPos);
+      if (scrollPos >= maxScroll - 0.5) {
+        scrollPos = maxScroll;
         viewportEl.scrollTop = maxScroll;
         scrollState = 'bottom-pause';
         stateUntil = now + PAUSE_MS;
@@ -121,8 +133,10 @@
       return;
     }
     if (scrollState === 'scrolling-up') {
-      viewportEl.scrollTop -= SCROLL_SPEED_PX;
-      if (viewportEl.scrollTop <= 0.5) {
+      scrollPos = Math.max(0, scrollPos - SCROLL_SPEED_PX_PER_SEC * dtSec);
+      viewportEl.scrollTop = Math.round(scrollPos);
+      if (scrollPos <= 0.5) {
+        scrollPos = 0;
         viewportEl.scrollTop = 0;
         scrollState = 'top-pause';
         stateUntil = now + PAUSE_MS;
@@ -165,6 +179,8 @@
     }[c]));
   }
 
+  let lastPatientsJson = null;
+
   function renderPatients(patients) {
     rowsEl.innerHTML = patients.map(p => `
       <div class="row">
@@ -175,6 +191,7 @@
     // Reset scroll position and re-measure row height whenever the list changes
     // (patient count, or even just longer text, can change the row/total height).
     viewportEl.scrollTop = 0;
+    scrollPos = 0;
     scrollState = 'top-pause';
     stateUntil = Date.now() + PAUSE_MS;
     sizeViewport();
@@ -185,7 +202,14 @@
       const res = await fetch(`${API_BASE}/api/patients`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const patients = await res.json();
-      renderPatients(patients);
+      // Only re-render (and reset the auto-scroll cycle) when the data
+      // actually changed — otherwise every 5s poll would restart the
+      // scroll animation before it ever reaches the bottom of a long list.
+      const json = JSON.stringify(patients);
+      if (json !== lastPatientsJson) {
+        lastPatientsJson = json;
+        renderPatients(patients);
+      }
       statusEl.textContent = 'Обновлено ' + new Date().toLocaleTimeString('ru-RU');
       statusEl.classList.remove('err');
     } catch (e) {
