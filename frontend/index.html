@@ -64,7 +64,7 @@
   // Point this at your backend (see backend/README). Same-origin by default;
   // override by opening this file as index.html?api=https://your-host or editing below.
   const params = new URLSearchParams(location.search);
-  const API_BASE = params.get('api') || 'http://localhost:8000';
+  const API_BASE = params.get('api') || 'https://dashboard-3thb.onrender.com';
   const POLL_MS = 5000;
 
   const rowsEl = document.getElementById('rows');
