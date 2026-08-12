@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>RIOBSIATM — Панель статуса пациентов</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap');
@@ -9,11 +10,32 @@
   body { margin: 0; background: #dde3ea; font-family: 'Nunito', sans-serif; }
   .clay-raised { box-shadow: 10px 10px 22px rgba(163,177,198,0.55), -10px -10px 22px rgba(255,255,255,0.75); }
   .clay-raised-sm { box-shadow: 6px 6px 12px rgba(163,177,198,0.5), -6px -6px 12px rgba(255,255,255,0.7); }
-  .row { display:grid; grid-template-columns:2.7fr 3.2fr; align-items:center; padding:20px 32px; background:#eef1f6; border-top:2px solid rgba(163,177,198,0.25); gap:16px; }
-  .row .name { font-size:30px; font-weight:800; color:#333640; line-height:1.15; }
-  .row .loc { font-size:31px; font-weight:600; color:#4a4e58; }
+
+  .page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding: clamp(12px, 4vw, 60px) clamp(10px, 3vw, 20px); }
+  .board { width:100%; max-width:1440px; background:#e4e8ee; border-radius: clamp(18px, 3vw, 44px); padding: clamp(10px, 2vw, 22px); }
+  .board-inner { background:#eef1f6; border-radius: clamp(14px, 2.4vw, 32px); padding: clamp(16px, 3.2vw, 36px) clamp(14px, 3vw, 40px) clamp(14px, 3vw, 32px); box-shadow: inset 0 2px 10px rgba(163,177,198,0.35); overflow:hidden; }
+
+  .board-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; row-gap:14px; padding-bottom: clamp(14px, 2.5vw, 28px); }
+  .brand { display:flex; align-items:center; gap: clamp(10px, 2vw, 18px); }
+  .brand-icon { width: clamp(40px, 6vw, 58px); height: clamp(40px, 6vw, 58px); border-radius: clamp(12px, 2vw, 20px); background:linear-gradient(145deg, #ef7266, #d8483a); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .brand-icon svg { width: clamp(20px, 3vw, 28px); height: clamp(20px, 3vw, 28px); }
+  .brand-title { font-size: clamp(24px, 5.5vw, 46px); font-weight:900; color:#d8483a; letter-spacing:0.5px; line-height:1.1; }
+  .brand-sub { font-size: clamp(11px, 2vw, 21px); font-weight:700; color:#8b91a0; letter-spacing:1.2px; margin-top:2px; }
+  .clock-wrap { display:flex; align-items:center; gap: clamp(12px, 2.5vw, 24px); }
+  .clock-divider { width:2px; height: clamp(32px, 4.5vw, 44px); background:rgba(163,177,198,0.4); border-radius:2px; }
+  .clock-time { font-size: clamp(28px, 6.5vw, 52px); font-weight:900; color:#333640; letter-spacing:1px; line-height:1.1; }
+  .clock-date { font-size: clamp(11px, 2vw, 21px); font-weight:600; color:#8b91a0; margin-top:2px; }
+
+  .table-card { background:#eef1f6; border-radius: clamp(16px, 2.4vw, 28px); overflow:hidden; margin-bottom:0; }
+  .table-head { display:grid; grid-template-columns:2.7fr 3.2fr; gap: clamp(8px, 2vw, 16px); padding: clamp(12px, 2.2vw, 22px) clamp(14px, 3vw, 32px); background:#e6eaf0; }
+  .table-head div { font-size: clamp(15px, 2.6vw, 31px); font-weight:800; letter-spacing:1px; color:#4a4e58; }
+
+  .row { display:grid; grid-template-columns:2.7fr 3.2fr; align-items:center; padding: clamp(12px, 2vw, 20px) clamp(14px, 3vw, 32px); background:#eef1f6; border-top:2px solid rgba(163,177,198,0.25); gap: clamp(8px, 2vw, 16px); }
+  .row .name { font-size: clamp(15px, 2.6vw, 30px); font-weight:800; color:#333640; line-height:1.15; }
+  .row .loc { font-size: clamp(14px, 2.6vw, 31px); font-weight:600; color:#4a4e58; }
   .row .loc.transit { font-style: italic; }
-  #status-pill { position:fixed; bottom:20px; right:20px; font:13px/1.4 'Nunito', sans-serif; color:#666; background:#fff; padding:8px 14px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.12); }
+
+  #status-pill { position:fixed; bottom: max(12px, env(safe-area-inset-bottom)); right:12px; font:12px/1.4 'Nunito', sans-serif; color:#666; background:#fff; padding:6px 12px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.12); max-width: calc(100vw - 24px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #status-pill.err { color:#b3261e; }
   #rows-viewport { overflow: hidden; }
   #rows-viewport::-webkit-scrollbar { display: none; }
@@ -21,33 +43,33 @@
 </head>
 <body>
 
-<div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:60px 20px;">
-  <div class="clay-raised" style="width:1440px; flex-shrink:0; background:#e4e8ee; border-radius:44px; padding:22px;">
-    <div style="background:#eef1f6; border-radius:32px; padding:36px 40px 32px 40px; box-shadow: inset 0 2px 10px rgba(163,177,198,0.35); overflow:hidden;">
+<div class="page">
+  <div class="board clay-raised">
+    <div class="board-inner">
 
-      <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:28px;">
-        <div style="display:flex; align-items:center; gap:18px;">
-          <div class="clay-raised-sm" style="width:58px; height:58px; border-radius:20px; background:linear-gradient(145deg, #ef7266, #d8483a); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M8 2v4M16 2v4M3 10h18"></path><circle cx="9" cy="15" r="1.5" fill="white" stroke="none"></circle><path d="M13 14h5M13 17h5"></path></svg>
+      <div class="board-header">
+        <div class="brand">
+          <div class="brand-icon clay-raised-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M8 2v4M16 2v4M3 10h18"></path><circle cx="9" cy="15" r="1.5" fill="white" stroke="none"></circle><path d="M13 14h5M13 17h5"></path></svg>
           </div>
           <div>
-            <div style="font-size:46px; font-weight:900; color:#d8483a; letter-spacing:0.5px;">RIOBSIATM</div>
-            <div style="font-size:21px; font-weight:700; color:#8b91a0; letter-spacing:1.5px; margin-top:2px;">ПАНЕЛЬ СТАТУСА ПАЦИЕНТОВ</div>
+            <div class="brand-title">RIOBSIATM</div>
+            <div class="brand-sub">ПАНЕЛЬ СТАТУСА ПАЦИЕНТОВ</div>
           </div>
         </div>
-        <div style="display:flex; align-items:center; gap:24px;">
-          <div style="width:2px; height:44px; background:rgba(163,177,198,0.4); border-radius:2px;"></div>
+        <div class="clock-wrap">
+          <div class="clock-divider"></div>
           <div style="text-align:right;">
-            <div id="clock-time" style="font-size:52px; font-weight:900; color:#333640; letter-spacing:1px;">--:--:--</div>
-            <div id="clock-date" style="font-size:21px; font-weight:600; color:#8b91a0; margin-top:2px;">—</div>
+            <div id="clock-time" class="clock-time">--:--:--</div>
+            <div id="clock-date" class="clock-date">—</div>
           </div>
         </div>
       </div>
 
-      <div class="clay-raised-sm" style="background:#eef1f6; border-radius:28px; overflow:hidden; margin-bottom:0;">
-        <div style="display:grid; grid-template-columns:2.7fr 3.2fr; gap:16px; padding:22px 32px; background:#e6eaf0;">
-          <div style="font-size:31px; font-weight:800; letter-spacing:1px; color:#4a4e58;">ИМЯ</div>
-          <div style="font-size:31px; font-weight:800; letter-spacing:1px; color:#4a4e58;">РАСПОЛОЖЕНИЕ</div>
+      <div class="table-card clay-raised-sm">
+        <div class="table-head">
+          <div>ИМЯ</div>
+          <div>РАСПОЛОЖЕНИЕ</div>
         </div>
         <div id="rows-viewport">
           <div id="rows"></div>
@@ -74,11 +96,12 @@
   const clockDateEl = document.getElementById('clock-date');
 
   // ── Auto-scroll for long patient lists ──────────────────────────────────
-  // Shows VISIBLE_ROWS rows at a time (matches the original design's height),
-  // then slowly scrolls through the rest: pause at top → scroll down →
-  // pause at bottom → jump to top → repeat. No mouse/touch on a TV board,
-  // so this is the only way to see rows 7+ of a 30-50 patient list.
-  const VISIBLE_ROWS = 6;
+  // Shows N rows at a time (fewer on narrow/phone screens so the whole card
+  // still fits reasonably), then slowly scrolls through the rest: pause at
+  // top → scroll down → pause at bottom → scroll back up → repeat.
+  function visibleRowsForViewport() {
+    return window.innerWidth < 640 ? 4 : 6;
+  }
   const SCROLL_SPEED_PX_PER_SEC = 40; // readable scroll speed, independent of frame rate
   const PAUSE_MS = 3000;              // dwell time at top and bottom
 
@@ -97,11 +120,26 @@
     // Rows have variable height (names can wrap to 2-3 lines), so measure
     // actual rendered geometry up through the Nth row rather than assuming
     // a uniform row height — otherwise a tall row gets cut off mid-text.
-    const count = Math.min(VISIBLE_ROWS, rows.length);
+    const count = Math.min(visibleRowsForViewport(), rows.length);
     const viewportTop = viewportEl.getBoundingClientRect().top;
     const lastRowBottom = rows[count - 1].getBoundingClientRect().bottom;
     viewportEl.style.maxHeight = Math.round(lastRowBottom - viewportTop) + 'px';
   }
+
+  let resizeDebounce = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeDebounce);
+    // Recompute after layout settles (fonts/columns reflow via CSS clamp()
+    // on rotation or window resize) — resets the scroll cycle too, since
+    // the row count shown per "page" can change between phone/desktop widths.
+    resizeDebounce = setTimeout(() => {
+      viewportEl.scrollTop = 0;
+      scrollPos = 0;
+      scrollState = 'top-pause';
+      stateUntil = Date.now() + PAUSE_MS;
+      sizeViewport();
+    }, 200);
+  });
 
   function autoScrollTick(ts) {
     requestAnimationFrame(autoScrollTick);
