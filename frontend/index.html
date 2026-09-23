@@ -17,6 +17,8 @@
     --present-bg:#dcf3e3;
     --transit:#8a6d1e;
     --transit-bg:#fff3d6;
+    --pink:#c23b73;
+    --pink-dark:#9c2f5c;
     --font-heading:'Roboto Condensed', 'Roboto', sans-serif;
     --font-body:'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   }
@@ -73,6 +75,76 @@
   #status-pill.err { color:#b3261e; }
   #rows-viewport { overflow: hidden; }
   #rows-viewport::-webkit-scrollbar { display: none; }
+
+  /* ---- Демо: кнопка "Поздравить" + попап поздравления ---- */
+  #congrats-btn {
+    position:fixed; bottom: max(12px, env(safe-area-inset-bottom)); left:12px; z-index:10;
+    display:flex; align-items:center; gap:8px;
+    padding:10px 18px; border-radius:14px; border:none; cursor:pointer;
+    font-family:var(--font-body); font-weight:700; font-size:14px;
+    color:var(--pink-dark); background:rgba(255,255,255,0.86);
+    border:1px solid rgba(255,255,255,0.7); box-shadow:0 6px 16px rgba(31,86,178,0.12);
+  }
+  #congrats-btn:hover:not(:disabled) { box-shadow:0 8px 20px rgba(31,86,178,0.2); }
+  #congrats-btn:disabled { opacity:0.6; cursor:default; }
+
+  .congrats-overlay {
+    position:fixed; inset:0; z-index:200;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+    background:rgba(20,26,40,0.4);
+    opacity:0; pointer-events:none; transition:opacity 0.35s ease;
+  }
+  .congrats-overlay.open { opacity:1; pointer-events:auto; }
+  .congrats-card {
+    position:relative; overflow:hidden;
+    width:560px; max-width:100%; border-radius:28px; background:#fff;
+    border:1px solid rgba(255,255,255,0.6);
+    box-shadow:0 30px 80px rgba(31,86,178,0.22), 0 4px 12px rgba(0,0,0,0.08);
+    padding:44px 40px 38px; text-align:center; box-sizing:border-box;
+    transform:scale(0.92) translateY(10px);
+    transition:transform 0.35s cubic-bezier(.2,.8,.2,1);
+    --accent:var(--blue-dark); --accent-bg:#e7edfa;
+  }
+  .congrats-overlay.open .congrats-card { transform:scale(1) translateY(0); }
+  .congrats-card.girl { --accent:var(--pink-dark); --accent-bg:#faeaf1; }
+  .congrats-confetti { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:1; }
+  .congrats-confetti span {
+    position:absolute; top:-24px; width:9px; height:15px; border-radius:2px; opacity:0.95;
+    animation: congrats-fall linear forwards;
+  }
+  @keyframes congrats-fall {
+    0% { transform:translateY(0) rotate(0deg); opacity:1; }
+    85% { opacity:1; }
+    100% { transform:translateY(480px) rotate(600deg); opacity:0; }
+  }
+  .congrats-eyebrow {
+    position:relative; z-index:2;
+    font-size:19px; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+    color:var(--accent);
+  }
+  .congrats-patient {
+    position:relative; z-index:2;
+    font-family:var(--font-heading); font-weight:700; font-size:22px; color:var(--ink); margin-top:12px;
+  }
+  .congrats-word {
+    position:relative; z-index:2;
+    font-family:var(--font-heading); font-weight:700; font-size:clamp(52px,9vw,80px);
+    color:var(--accent); line-height:1; margin:22px 0 8px;
+    animation: congrats-pop 0.6s cubic-bezier(.2,.8,.2,1) 0.1s both;
+  }
+  @keyframes congrats-pop {
+    0% { transform:scale(0.4) rotate(-4deg); opacity:0; }
+    55% { transform:scale(1.14) rotate(2deg); opacity:1; }
+    80% { transform:scale(0.97) rotate(-1deg); }
+    100% { transform:scale(1) rotate(0deg); }
+  }
+  .congrats-voice {
+    position:relative; z-index:2;
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:13.5px; font-weight:700; color:var(--accent);
+    background:var(--accent-bg); padding:7px 16px; border-radius:999px;
+    min-height:16px;
+  }
 </style>
 </head>
 <body>
@@ -115,6 +187,18 @@
 </div>
 
 <div id="status-pill">Подключение…</div>
+
+<button id="congrats-btn" title="Демо: поздравить случайную пациентку">🎉 Поздравить</button>
+
+<div class="congrats-overlay" id="congratsOverlay">
+  <div class="congrats-card" id="congratsCard">
+    <div class="congrats-confetti" id="congratsConfetti"></div>
+    <div class="congrats-eyebrow">Поздравляем!</div>
+    <div class="congrats-patient" id="congratsPatient">—</div>
+    <div class="congrats-word" id="congratsWord">—</div>
+    <div class="congrats-voice" id="congratsVoice">&nbsp;</div>
+  </div>
+</div>
 
 <script>
   // Point this at your backend (see backend/README). Same-origin by default;
@@ -309,6 +393,112 @@
   setInterval(refresh, POLL_MS);
   setInterval(syncServerTime, 5 * 60 * 1000);
   setInterval(refreshImportStatus, 60 * 1000);
+
+  // ── Демо: кнопка "Поздравить" ────────────────────────────────────────────
+  // Намеренно НЕ берёт имя из реального списка пациентов (тот приходит с
+  // живого медицинского API) — рандомная "выдуманная" радость про реального
+  // человека была бы недопустима. Имя и пол — из демо-набора ниже.
+  (function () {
+    const DEMO_NAMES = [
+      'Иванова Анна Сергеевна',
+      'Смирнова Ольга Дмитриевна',
+      'Кузнецова Мария Игоревна',
+      'Петрова Елена Викторовна',
+      'Николаева Дарья Олеговна',
+      'Соколова Виктория Андреевна',
+      'Морозова Наталья Сергеевна',
+      'Волкова Ирина Павловна',
+    ];
+
+    const VOICES = {
+      boy:  { uz: 'uz-sardor',  ru: 'ru-dmitry'   },
+      girl: { uz: 'uz-madina',  ru: 'ru-svetlana' },
+    };
+
+    function buildTexts(name, gender) {
+      return gender === 'boy'
+        ? {
+            ru: `Поздравляем! У пациентки ${name} родился мальчик.`,
+            uz: `Tabriklaymiz! ${name} bemorimizning o'g'il farzandi dunyoga keldi.`,
+          }
+        : {
+            ru: `Поздравляем! У пациентки ${name} родилась девочка.`,
+            uz: `Tabriklaymiz! ${name} bemorimizning qiz farzandi dunyoga keldi.`,
+          };
+    }
+
+    const btn = document.getElementById('congrats-btn');
+    const overlay = document.getElementById('congratsOverlay');
+    const card = document.getElementById('congratsCard');
+    const patientEl = document.getElementById('congratsPatient');
+    const wordEl = document.getElementById('congratsWord');
+    const voiceEl = document.getElementById('congratsVoice');
+    const confettiEl = document.getElementById('congratsConfetti');
+    const audioEl = new Audio();
+
+    function buildConfetti() {
+      const colors = ['#c23b73', '#2f6fe0', '#1d7a3e', '#e0a92f', '#8a3fc2'];
+      confettiEl.innerHTML = '';
+      for (let i = 0; i < 30; i++) {
+        const s = document.createElement('span');
+        s.style.left = (Math.random() * 100) + '%';
+        s.style.background = colors[i % colors.length];
+        s.style.animationDuration = (1.6 + Math.random() * 1.2) + 's';
+        s.style.animationDelay = (Math.random() * 0.5) + 's';
+        s.style.transform = 'rotate(' + Math.floor(Math.random() * 360) + 'deg)';
+        if (Math.random() > 0.5) s.style.borderRadius = '50%';
+        confettiEl.appendChild(s);
+      }
+    }
+
+    // Озвучка не должна ронять демо, если бэкенд/сеть подведут — просто
+    // тихо переходим дальше без звука.
+    function playTTS(text, voiceKey) {
+      return new Promise((resolve) => {
+        const url = `${API_BASE}/api/tts?text=${encodeURIComponent(text)}&voice=${voiceKey}`;
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        audioEl.onended = finish;
+        audioEl.onerror = finish;
+        audioEl.src = url;
+        audioEl.play().catch(finish);
+        setTimeout(finish, 8000); // страховка, если событие ended не пришло
+      });
+    }
+
+    async function runCongrats() {
+      btn.disabled = true;
+      try {
+        const name = DEMO_NAMES[Math.floor(Math.random() * DEMO_NAMES.length)];
+        const gender = Math.random() < 0.5 ? 'boy' : 'girl';
+        const texts = buildTexts(name, gender);
+
+        card.classList.toggle('girl', gender === 'girl');
+        patientEl.textContent = 'У пациентки ' + name;
+        wordEl.style.animation = 'none';
+        wordEl.textContent = gender === 'boy' ? 'Мальчик' : 'Девочка';
+        void wordEl.offsetWidth;
+        wordEl.style.animation = '';
+        voiceEl.textContent = '🔊 O‘zbekcha…';
+        buildConfetti();
+        overlay.classList.add('open');
+
+        await playTTS(texts.uz, VOICES[gender].uz);
+        voiceEl.textContent = '🔊 По-русски…';
+        await playTTS(texts.ru, VOICES[gender].ru);
+
+        voiceEl.textContent = ' ';
+        setTimeout(() => overlay.classList.remove('open'), 1200);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    btn.addEventListener('click', runCongrats);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.classList.remove('open');
+    });
+  })();
 </script>
 
 </body>
