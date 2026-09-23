@@ -8,10 +8,12 @@ from typing import List
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-import edge_tts
+import uuid
+
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -161,15 +163,28 @@ def server_time():
 
 
 # ---------------------------------------------------------
-# ОЗВУЧКА (Edge TTS) — для демо-кнопки "Поздравить" на табло.
+# ОЗВУЧКА (VoiceLab.uz) — для демо-кнопки "Поздравить" на табло.
 # Голоса ограничены белым списком, текст — коротким лимитом,
 # чтобы эндпоинт нельзя было использовать как открытый TTS-прокси.
+#
+# Настройка на Render (Environment → добавить переменные окружения):
+#   VOICELAB_API_KEY       — ключ вида vlk_..., см. https://voicelab.uz/app/developer
+#   VOICELAB_VOICE_UZ_MALE, VOICELAB_VOICE_UZ_FEMALE,
+#   VOICELAB_VOICE_RU_MALE, VOICELAB_VOICE_RU_FEMALE
+#     — id голосов (вида voice_...), которые вернёт
+#       GET https://api.voicelab.uz/v1/voices?language=uz  (и ?language=ru)
+#       с заголовком Authorization: Bearer <ваш ключ>.
+# Если для какого-то пола голос не задан — эндпоинт вернёт понятную ошибку
+# 503, а не упадёт молча.
 # ---------------------------------------------------------
+VOICELAB_API_KEY = os.environ.get("VOICELAB_API_KEY")
+VOICELAB_BASE_URL = "https://api.voicelab.uz/v1"
+
 TTS_VOICES = {
-    "uz-madina": "uz-UZ-MadinaNeural",
-    "uz-sardor": "uz-UZ-SardorNeural",
-    "ru-svetlana": "ru-RU-SvetlanaNeural",
-    "ru-dmitry": "ru-RU-DmitryNeural",
+    "uz-madina": ("uz", "VOICELAB_VOICE_UZ_FEMALE"),
+    "uz-sardor": ("uz", "VOICELAB_VOICE_UZ_MALE"),
+    "ru-svetlana": ("ru", "VOICELAB_VOICE_RU_FEMALE"),
+    "ru-dmitry": ("ru", "VOICELAB_VOICE_RU_MALE"),
 }
 TTS_MAX_CHARS = 300
 
@@ -179,22 +194,39 @@ async def text_to_speech(
     text: str = Query(..., min_length=1, max_length=TTS_MAX_CHARS),
     voice: str = Query("ru-svetlana"),
 ):
-    """Озвучивает текст через Microsoft Edge TTS и отдаёт mp3-поток."""
-    edge_voice = TTS_VOICES.get(voice)
-    if not edge_voice:
+    """Озвучивает текст через VoiceLab.uz и отдаёт WAV-аудио."""
+    if not VOICELAB_API_KEY:
+        raise HTTPException(status_code=503, detail="VOICELAB_API_KEY не настроен на сервере")
+
+    mapping = TTS_VOICES.get(voice)
+    if not mapping:
         raise HTTPException(status_code=400, detail=f"Unknown voice '{voice}'. Allowed: {list(TTS_VOICES)}")
 
-    async def generate():
-        communicate = edge_tts.Communicate(text, edge_voice)
-        try:
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    yield chunk["data"]
-        except Exception as e:
-            print(f"[TTS] Ошибка синтеза речи: {e}")
-            return
+    language, env_name = mapping
+    voice_id = os.environ.get(env_name)
+    if not voice_id:
+        raise HTTPException(status_code=503, detail=f"{env_name} не настроен на сервере")
 
-    return StreamingResponse(generate(), media_type="audio/mpeg")
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(
+                f"{VOICELAB_BASE_URL}/tts",
+                headers={
+                    "Authorization": f"Bearer {VOICELAB_API_KEY}",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": uuid.uuid4().hex,
+                },
+                json={"text": text, "language": language, "voice_id": voice_id, "speed": 1},
+            )
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        print(f"[TTS] VoiceLab вернул ошибку {e.response.status_code}: {e.response.text}")
+        raise HTTPException(status_code=502, detail="VoiceLab TTS request failed")
+    except Exception as e:
+        print(f"[TTS] Ошибка синтеза речи: {e}")
+        raise HTTPException(status_code=502, detail="TTS request failed")
+
+    return Response(content=resp.content, media_type="audio/wav")
 
 
 @app.get("/api/patients", response_model=List[schemas.PatientOut])
