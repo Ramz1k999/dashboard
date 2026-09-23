@@ -8,8 +8,10 @@ from typing import List
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+import edge_tts
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -156,6 +158,43 @@ def health():
 def server_time():
     """Lets the dashboard sync its clock to the server instead of the viewer's device clock."""
     return {"iso": datetime.now(timezone.utc).isoformat()}
+
+
+# ---------------------------------------------------------
+# ОЗВУЧКА (Edge TTS) — для демо-кнопки "Поздравить" на табло.
+# Голоса ограничены белым списком, текст — коротким лимитом,
+# чтобы эндпоинт нельзя было использовать как открытый TTS-прокси.
+# ---------------------------------------------------------
+TTS_VOICES = {
+    "uz-madina": "uz-UZ-MadinaNeural",
+    "uz-sardor": "uz-UZ-SardorNeural",
+    "ru-svetlana": "ru-RU-SvetlanaNeural",
+    "ru-dmitry": "ru-RU-DmitryNeural",
+}
+TTS_MAX_CHARS = 300
+
+
+@app.get("/api/tts")
+async def text_to_speech(
+    text: str = Query(..., min_length=1, max_length=TTS_MAX_CHARS),
+    voice: str = Query("ru-svetlana"),
+):
+    """Озвучивает текст через Microsoft Edge TTS и отдаёт mp3-поток."""
+    edge_voice = TTS_VOICES.get(voice)
+    if not edge_voice:
+        raise HTTPException(status_code=400, detail=f"Unknown voice '{voice}'. Allowed: {list(TTS_VOICES)}")
+
+    async def generate():
+        communicate = edge_tts.Communicate(text, edge_voice)
+        try:
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    yield chunk["data"]
+        except Exception as e:
+            print(f"[TTS] Ошибка синтеза речи: {e}")
+            return
+
+    return StreamingResponse(generate(), media_type="audio/mpeg")
 
 
 @app.get("/api/patients", response_model=List[schemas.PatientOut])
