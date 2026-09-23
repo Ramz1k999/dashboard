@@ -59,14 +59,14 @@
 
   .table-card { background:rgba(255,255,255,0.86); border:1px solid rgba(255,255,255,0.7); border-radius: clamp(16px, 2.4vw, 28px); overflow:hidden; margin-bottom:0; }
   .table-head { display:grid; grid-template-columns:2.7fr 3.2fr; justify-items:center; gap: clamp(8px, 2vw, 16px); padding: clamp(12px, 2.2vw, 22px) clamp(14px, 3vw, 32px); border-bottom:1px solid var(--ink-faint); }
-  .table-head div { font-family: var(--font-heading); font-size: clamp(14px, 2.2vw, 22px); font-weight:700; letter-spacing:1px; color:var(--ink-soft); text-align:center; }
+  .table-head div { font-family: var(--font-heading); font-size: clamp(17px, 2.8vw, 27px); font-weight:700; letter-spacing:1px; color:var(--ink-soft); text-align:center; }
 
-  .row { display:grid; grid-template-columns:2.7fr 3.2fr; align-items:center; justify-items:center; padding: clamp(12px, 2vw, 20px) clamp(14px, 3vw, 32px); background:rgba(255,255,255,0.86); border-top:1px solid var(--ink-faint); gap: clamp(8px, 2vw, 16px); }
-  .row .name { font-family: var(--font-heading); font-size: clamp(15px, 2.6vw, 30px); font-weight:700; color:var(--ink); line-height:1.15; text-align:center; }
+  .row { display:grid; grid-template-columns:2.7fr 3.2fr; align-items:center; justify-items:center; padding: clamp(16px, 2.6vw, 28px) clamp(14px, 3vw, 32px); background:rgba(255,255,255,0.86); border-top:1px solid var(--ink-faint); gap: clamp(8px, 2vw, 16px); }
+  .row .name { font-family: var(--font-heading); font-size: clamp(20px, 3.6vw, 40px); font-weight:700; color:var(--ink); line-height:1.15; text-align:center; }
   .row .loc {
     display:inline-flex; align-items:center; justify-content:center; width:fit-content;
-    font-size: clamp(13px, 1.9vw, 21px); font-weight:700;
-    padding: clamp(5px, 0.8vw, 9px) clamp(12px, 1.6vw, 20px); border-radius:999px;
+    font-size: clamp(17px, 2.6vw, 28px); font-weight:700;
+    padding: clamp(7px, 1vw, 12px) clamp(16px, 2vw, 24px); border-radius:999px;
     color:var(--present); background:var(--present-bg);
   }
   .row .loc.transit { font-style: normal; color:var(--transit); background:var(--transit-bg); }
@@ -97,10 +97,10 @@
   .congrats-overlay.open { opacity:1; pointer-events:auto; }
   .congrats-card {
     position:relative; overflow:hidden;
-    width:560px; max-width:100%; border-radius:28px; background:#fff;
+    width:820px; max-width:95vw; border-radius:36px; background:#fff;
     border:1px solid rgba(255,255,255,0.6);
-    box-shadow:0 30px 80px rgba(31,86,178,0.22), 0 4px 12px rgba(0,0,0,0.08);
-    padding:44px 40px 38px; text-align:center; box-sizing:border-box;
+    box-shadow:0 40px 100px rgba(31,86,178,0.25), 0 4px 16px rgba(0,0,0,0.08);
+    padding:68px 60px 56px; text-align:center; box-sizing:border-box;
     transform:scale(0.92) translateY(10px);
     transition:transform 0.35s cubic-bezier(.2,.8,.2,1);
     --accent:var(--blue-dark); --accent-bg:#e7edfa;
@@ -119,17 +119,17 @@
   }
   .congrats-eyebrow {
     position:relative; z-index:2;
-    font-size:19px; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+    font-size:clamp(22px,3vw,30px); font-weight:700; letter-spacing:3px; text-transform:uppercase;
     color:var(--accent);
   }
   .congrats-patient {
     position:relative; z-index:2;
-    font-family:var(--font-heading); font-weight:700; font-size:22px; color:var(--ink); margin-top:12px;
+    font-family:var(--font-heading); font-weight:700; font-size:clamp(24px,3.2vw,32px); color:var(--ink); margin-top:18px;
   }
   .congrats-word {
     position:relative; z-index:2;
-    font-family:var(--font-heading); font-weight:700; font-size:clamp(52px,9vw,80px);
-    color:var(--accent); line-height:1; margin:22px 0 8px;
+    font-family:var(--font-heading); font-weight:700; font-size:clamp(84px,13vw,140px);
+    color:var(--accent); line-height:1; margin:34px 0 14px;
     animation: congrats-pop 0.6s cubic-bezier(.2,.8,.2,1) 0.1s both;
   }
   @keyframes congrats-pop {
@@ -144,6 +144,12 @@
     font-size:13.5px; font-weight:700; color:var(--accent);
     background:var(--accent-bg); padding:7px 16px; border-radius:999px;
     min-height:16px;
+  }
+  .congrats-demo-tag {
+    position:absolute; top:18px; right:20px; z-index:3;
+    font-size:11px; font-weight:700; letter-spacing:1px;
+    color:var(--ink-soft); background:var(--ink-faint);
+    padding:4px 10px; border-radius:999px;
   }
 </style>
 </head>
@@ -193,6 +199,7 @@
 <div class="congrats-overlay" id="congratsOverlay">
   <div class="congrats-card" id="congratsCard">
     <div class="congrats-confetti" id="congratsConfetti"></div>
+    <div class="congrats-demo-tag">ДЕМО</div>
     <div class="congrats-eyebrow">Поздравляем!</div>
     <div class="congrats-patient" id="congratsPatient">—</div>
     <div class="congrats-word" id="congratsWord">—</div>
@@ -336,6 +343,7 @@
   }
 
   let lastPatientsJson = null;
+  let currentPatients = []; // latest fetched list — read by the "Поздравить" demo below
 
   function renderPatients(patients) {
     rowsEl.innerHTML = patients.map(p => `
@@ -358,6 +366,7 @@
       const res = await fetch(`${API_BASE}/api/patients`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const patients = await res.json();
+      currentPatients = patients;
       // Only re-render (and reset the auto-scroll cycle) when the data
       // actually changed — otherwise every 5s poll would restart the
       // scroll animation before it ever reaches the bottom of a long list.
@@ -395,20 +404,15 @@
   setInterval(refreshImportStatus, 60 * 1000);
 
   // ── Демо: кнопка "Поздравить" ────────────────────────────────────────────
-  // Намеренно НЕ берёт имя из реального списка пациентов (тот приходит с
-  // живого медицинского API) — рандомная "выдуманная" радость про реального
-  // человека была бы недопустима. Имя и пол — из демо-набора ниже.
+  // ВРЕМЕННО берёт имя из реального списка пациентов (currentPatients,
+  // обновляется в refresh() выше). Пол ребёнка и сам факт родов при этом
+  // ПОЛНОСТЬЮ выдуманы случайным образом — это ещё не привязано к реальному
+  // статусу "пациентка в родзале". Как только появится реальная проверка
+  // (кто действительно в родах) — обязательно ограничить выбор только ими,
+  // иначе табло будет "поздравлять" случайных пациентов на рентгене/УЗИ.
+  // На попапе оставлена пометка "ДЕМО", пока этой проверки нет.
   (function () {
-    const DEMO_NAMES = [
-      'Иванова Анна Сергеевна',
-      'Смирнова Ольга Дмитриевна',
-      'Кузнецова Мария Игоревна',
-      'Петрова Елена Викторовна',
-      'Николаева Дарья Олеговна',
-      'Соколова Виктория Андреевна',
-      'Морозова Наталья Сергеевна',
-      'Волкова Ирина Павловна',
-    ];
+    const FALLBACK_NAMES = ['Иванова Анна Сергеевна', 'Смирнова Ольга Дмитриевна']; // на случай, если список ещё не загрузился
 
     const VOICES = {
       boy:  { uz: 'uz-sardor',  ru: 'ru-dmitry'   },
@@ -469,7 +473,8 @@
     async function runCongrats() {
       btn.disabled = true;
       try {
-        const name = DEMO_NAMES[Math.floor(Math.random() * DEMO_NAMES.length)];
+        const pool = currentPatients.length ? currentPatients.map(p => p.name) : FALLBACK_NAMES;
+        const name = pool[Math.floor(Math.random() * pool.length)];
         const gender = Math.random() < 0.5 ? 'boy' : 'girl';
         const texts = buildTexts(name, gender);
 
